@@ -20,8 +20,6 @@ from ``Developer Command Prompt 2022`` execute:
 
 ```
 curl.exe "https://github.com/leok7v/quick/blob/main/quick.h"   --remote-name
-curl.exe "https://github.com/leok7v/quick/blob/main/sample1.c" --remote-name
-...
 curl.exe "https://github.com/nothings/stb/blob/master/stb_image.h" --remote-name
 
 user\quick>cl.exe sample1.c

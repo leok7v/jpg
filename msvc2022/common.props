@@ -4,7 +4,7 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)..;</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_SCL_SECURE_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS_CRT_SECURE_NO_WARNINGS=1;WIN32;%(PreprocessorDefinitions);</PreprocessorDefinitions>
+      <PreprocessorDefinitions>CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_SCL_SECURE_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS=1;WIN32;%(PreprocessorDefinitions);</PreprocessorDefinitions>
       <WarningLevel>Level4</WarningLevel>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>

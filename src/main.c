@@ -83,9 +83,15 @@ static void download() {
     }
 }
 
+static void keyboard(uic_t* unused, int32_t ch) {
+    (void)unused;
+    if (ch == 'q' || ch == 'Q' || ch == 033) { app.close(); }
+}
+
 static void init() {
     app.title = title;
     app.ui->paint = paint;
+    app.ui->keyboard = keyboard;
     strprintf(filename, "%s\\mandrill-4.2.03.png",
         app.known_folder(known_folder_pictures));
     download();

@@ -4,17 +4,29 @@
     <ClInclude Include="..\src\version.h">
       <Filter>res</Filter>
     </ClInclude>
-    <ClInclude Include="..\quick.h" />
-    <ClInclude Include="..\stb_image.h" />
+    <ClInclude Include="..\quick.h">
+      <Filter>test</Filter>
+    </ClInclude>
+    <ClInclude Include="..\stb_image.h">
+      <Filter>test</Filter>
+    </ClInclude>
+    <ClInclude Include="..\picojpeg.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="res">
       <UniqueIdentifier>{c60b96ea-15fe-4796-86c9-3b9428dc82d8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="test">
+      <UniqueIdentifier>{fc8eb896-e286-4eb3-a651-64342795bac8}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="..\src\sample.ico" />
-    <Image Include="..\src\sample.png" />
+    <Image Include="..\src\sample.ico">
+      <Filter>test</Filter>
+    </Image>
+    <Image Include="..\src\sample.png">
+      <Filter>test</Filter>
+    </Image>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\jpg.rc">
@@ -25,6 +37,10 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\main.c" />
+    <ClCompile Include="..\src\main.c">
+      <Filter>test</Filter>
+    </ClCompile>
+    <ClCompile Include="..\jo_jpeg.c" />
+    <ClCompile Include="..\picojpeg.c" />
   </ItemGroup>
 </Project>

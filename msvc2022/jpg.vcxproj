@@ -146,6 +146,7 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\picojpeg.h" />
     <ClInclude Include="..\quick.h" />
     <ClInclude Include="..\src\version.h" />
     <ClInclude Include="..\stb_image.h" />
@@ -162,6 +163,8 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\jo_jpeg.c" />
+    <ClCompile Include="..\picojpeg.c" />
     <ClCompile Include="..\src\main.c" />
   </ItemGroup>
   <ItemGroup>
