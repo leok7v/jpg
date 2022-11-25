@@ -1,0 +1,17 @@
+﻿#ifdef RC_INVOKED
+#ifndef _INC_WINDOWS
+#define _INC_WINDOWS
+#include "winres.h"
+#endif
+#endif
+
+101 ICON "jpg.ico"
+
+#define company_name "`Leo` Drimtry Kuznetsov"
+#define copyright "Copyright (C) 2018-2022 Drimtry Kuznetsov. All rights reserved."
+#define file_description "jpeg encoder/decoder sample app"
+#define original_file_name "main.exe"
+#define product_name "jpg"
+
+#include "..\src\version.rc"
+
