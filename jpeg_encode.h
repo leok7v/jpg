@@ -2,16 +2,39 @@
 #define jpeg_encode_h
 /* public domain Simple, Minimalistic JPEG writer - http://jonolick.com */
 
-int jpeg_encode(const char *filename, const void *data,
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef void (*jpeg_write_t)(void* that, const void *data, int bytes);
+
+int jpeg_encode(void* that, jpeg_write_t write, const void *data,
     int width, int height, int comp, int quality);
+
+#ifdef __cplusplus
+}
+#endif
 
 #ifndef jpeg_encode_implementation
 #define jpeg_encode_implementation
 
-#include <stdio.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
+#include <string.h>
 #include <math.h>
 #include <errno.h>
+
+typedef struct jpeg_writer_s jpeg_writer_t;
+
+typedef struct jpeg_writer_s {
+    void* that;
+    jpeg_write_t write;
+    size_t bytes;
+    uint8_t buffer[4 * 1024];
+} jpeg_writer_t;
 
 static const uint8_t zigzag[] = {
     0, 1, 5, 6, 14, 15, 27, 28, 2, 4, 7, 13, 16, 26, 29, 42,
@@ -20,22 +43,42 @@ static const uint8_t zigzag[] = {
     21, 34, 37, 47, 50, 56, 59, 61, 35, 36, 48, 49, 57, 58, 62, 63
 };
 
-static void write_bits(FILE *fp, int32_t* bitBuf, int32_t *bitCnt, const uint16_t *bs) {
+static void jpeg_writer_flush(jpeg_writer_t* writer) {
+    if (writer->bytes > 0) {
+        writer->write(writer->that, writer->buffer, (int)writer->bytes);
+        writer->bytes = 0;
+    }
+}
+
+static void jpeg_write_byte(jpeg_writer_t* writer, const uint8_t b) {
+    if (writer->bytes + 1 >= sizeof(writer->buffer)) { jpeg_writer_flush(writer); }
+    writer->buffer[writer->bytes] = b;
+    writer->bytes++;
+}
+
+static void jpeg_write(jpeg_writer_t* writer, const uint8_t b[], size_t bytes) {
+    if (writer->bytes + bytes >= sizeof(writer->buffer)) { jpeg_writer_flush(writer); }
+//  assert(bytes <= sizeof(writer->buffer));
+    memcpy(&writer->buffer[writer->bytes], b, bytes);
+    writer->bytes += bytes;
+}
+
+static void jpeg_encode_write_bits(jpeg_writer_t* writer, int32_t* bitBuf, int32_t *bitCnt, const uint16_t *bs) {
     *bitCnt += bs[1];
     *bitBuf |= bs[0] << (24 - *bitCnt);
     while (*bitCnt >= 8) {
         uint8_t c = (*bitBuf >> 16) & 255;
-        putc(c, fp);
+        jpeg_write_byte(writer, c);
         if (c == 255) {
-            putc(0, fp);
+            jpeg_write_byte(writer, 0);
         }
         *bitBuf <<= 8;
         *bitCnt -= 8;
     }
 }
 
-static void dct(float* d0, float* d1, float* d2, float* d3,
-                   float* d4, float* d5, float* d6, float* d7) {
+static void jpeg_encode_dct(float* d0, float* d1, float* d2, float* d3,
+                float* d4, float* d5, float* d6, float* d7) {
     float tmp0 = *d0 + *d7;
     float tmp7 = *d0 - *d7;
     float tmp1 = *d1 + *d6;
@@ -71,7 +114,7 @@ static void dct(float* d0, float* d1, float* d2, float* d3,
     *d7 = z11 - z4;
 }
 
-static void calc_bits(int val, uint16_t bits[2]) {
+static void jpeg_encode_calc_bits(int val, uint16_t bits[2]) {
     int tmp1 = val < 0 ? -val : val;
     val = val < 0 ? val-1 : val;
     bits[1] = 1;
@@ -81,20 +124,20 @@ static void calc_bits(int val, uint16_t bits[2]) {
     bits[0] = val & ((1<<bits[1])-1);
 }
 
-static int process_DU(FILE *fp, int32_t* bitBuf, int32_t* bitCnt,
+static int jpeg_encode_process(jpeg_writer_t* writer, int32_t* bitBuf, int32_t* bitCnt,
         float* CDU, float* fdtbl, int DC, const uint16_t HTDC[256][2],
         const uint16_t HTAC[256][2]) {
     const uint16_t EOB[2] = { HTAC[0x00][0], HTAC[0x00][1] };
     const uint16_t M16zeroes[2] = { HTAC[0xF0][0], HTAC[0xF0][1] };
     // DCT rows
-    for (int dataOff = 0; dataOff < 64; dataOff += 8) {
-        dct(&CDU[dataOff + 0], &CDU[dataOff + 1], &CDU[dataOff + 2], &CDU[dataOff + 3],
-            &CDU[dataOff + 4], &CDU[dataOff + 5], &CDU[dataOff + 6], &CDU[dataOff + 7]);
+    for (int i = 0; i < 64; i += 8) {
+        jpeg_encode_dct(&CDU[i + 0], &CDU[i + 1], &CDU[i + 2], &CDU[i + 3],
+                        &CDU[i + 4], &CDU[i + 5], &CDU[i + 6], &CDU[i + 7]);
     }
     // DCT columns
-    for (int dataOff = 0; dataOff < 8; dataOff++) {
-        dct(&CDU[dataOff + 0], &CDU[dataOff +  8], &CDU[dataOff + 16], &CDU[dataOff+24],
-            &CDU[dataOff +32], &CDU[dataOff + 40], &CDU[dataOff + 48], &CDU[dataOff+56]);
+    for (int i = 0; i < 8; i++) {
+        jpeg_encode_dct(&CDU[i + 0], &CDU[i +  8], &CDU[i + 16], &CDU[i+24],
+                        &CDU[i +32], &CDU[i + 40], &CDU[i + 48], &CDU[i+56]);
     }
     // Quantize/descale/zigzag the coefficients
     int DU[64] = {0};
@@ -105,12 +148,12 @@ static int process_DU(FILE *fp, int32_t* bitBuf, int32_t* bitCnt,
     // Encode DC
     int diff = DU[0] - DC;
     if (diff == 0) {
-        write_bits(fp, bitBuf, bitCnt, HTDC[0]);
+        jpeg_encode_write_bits(writer, bitBuf, bitCnt, HTDC[0]);
     } else {
         uint16_t bits[2];
-        calc_bits(diff, bits);
-        write_bits(fp, bitBuf, bitCnt, HTDC[bits[1]]);
-        write_bits(fp, bitBuf, bitCnt, bits);
+        jpeg_encode_calc_bits(diff, bits);
+        jpeg_encode_write_bits(writer, bitBuf, bitCnt, HTDC[bits[1]]);
+        jpeg_encode_write_bits(writer, bitBuf, bitCnt, bits);
     }
     // Encode ACs
     int end0pos = 63;
@@ -118,7 +161,7 @@ static int process_DU(FILE *fp, int32_t* bitBuf, int32_t* bitCnt,
     }
     // end0pos = first element in reverse order !=0
     if (end0pos == 0) {
-        write_bits(fp, bitBuf, bitCnt, EOB);
+        jpeg_encode_write_bits(writer, bitBuf, bitCnt, EOB);
         return DU[0];
     }
     for (int i = 1; i <= end0pos; i++) {
@@ -128,23 +171,24 @@ static int process_DU(FILE *fp, int32_t* bitBuf, int32_t* bitCnt,
         int nrzeroes = i-startpos;
         if ( nrzeroes >= 16 ) {
             int lng = nrzeroes>>4;
-            for (int nrmarker=1; nrmarker <= lng; ++nrmarker)
-                write_bits(fp, bitBuf, bitCnt, M16zeroes);
+            for (int nrmarker=1; nrmarker <= lng; nrmarker++) {
+                jpeg_encode_write_bits(writer, bitBuf, bitCnt, M16zeroes);
+            }
             nrzeroes &= 15;
         }
         uint16_t bits[2];
-        calc_bits(DU[i], bits);
-        write_bits(fp, bitBuf, bitCnt, HTAC[(nrzeroes<<4)+bits[1]]);
-        write_bits(fp, bitBuf, bitCnt, bits);
+        jpeg_encode_calc_bits(DU[i], bits);
+        jpeg_encode_write_bits(writer, bitBuf, bitCnt, HTAC[(nrzeroes<<4) + bits[1]]);
+        jpeg_encode_write_bits(writer, bitBuf, bitCnt, bits);
     }
     if (end0pos != 63) {
-        write_bits(fp, bitBuf, bitCnt, EOB);
+        jpeg_encode_write_bits(writer, bitBuf, bitCnt, EOB);
     }
     return DU[0];
 }
 
-int jpeg_encode(const char *filename, const void *data,
-        int width, int height, int comp, int quality) {
+int jpeg_encode(void* that, jpeg_write_t write, const void *data,
+    int width, int height, int comp, int quality) {
     static const uint8_t std_dc_luminance_nrcodes[] = {0,0,1,5,1,1,1,1,1,1,0,0,0,0,0,0,0};
     static const uint8_t std_dc_luminance_values[] = {0,1,2,3,4,5,6,7,8,9,10,11};
     static const uint8_t std_ac_luminance_nrcodes[] = {0,0,2,1,3,3,2,4,3,5,5,4,4,0,0,1,0x7d};
@@ -287,22 +331,23 @@ int jpeg_encode(const char *filename, const void *data,
         1.0f * 2.828427125f, 1.387039845f * 2.828427125f, 1.306562965f * 2.828427125f,
         1.175875602f * 2.828427125f, 1.0f * 2.828427125f, 0.785694958f * 2.828427125f,
         0.541196100f * 2.828427125f, 0.275899379f * 2.828427125f };
-    if (data == NULL || filename == NULL || width <= 0 || height <= 0 ||
+    jpeg_writer_t writer = {
+        .that = that,
+        .write = write,
+        .bytes = 0
+    };
+    if (data == NULL || width <= 0 || height <= 0 ||
         comp < 1 || comp > 4 || comp == 2) {
         errno = EINVAL;
         return -1;
     }
-    FILE *fp = fopen(filename, "wb");
-    if (!fp) {
-        return -1;
-    }
-    quality = quality ? quality : 90;
+    quality = quality <= 0 ? 90 : quality;
     quality = quality < 1 ? 1 : quality > 100 ? 100 : quality;
     quality = quality < 50 ? 5000 / quality : 200 - quality * 2;
     uint8_t YTable[64] = {0};
     uint8_t UVTable[64] = {0};
     for (int i = 0; i < 64; i++) {
-        int yti = (YQT[i]*quality + 50) / 100;
+        int yti = (YQT[i] * quality + 50) / 100;
         YTable[zigzag[i]] = (uint8_t)(yti < 1 ? 1 : yti > 255 ? 255 : yti);
         int uvti  = (UVQT[i] * quality + 50) / 100;
         UVTable[zigzag[i]] = (uint8_t)(uvti < 1 ? 1 : uvti > 255 ? 255 : uvti);
@@ -319,29 +364,29 @@ int jpeg_encode(const char *filename, const void *data,
     // Write Headers
     static const uint8_t head0[] = { 0xFF,0xD8,0xFF,0xE0,0,0x10,
         'J','F','I','F',0,1,1,0,0,1,0,1,0,0,0xFF,0xDB,0,0x84,0 };
-    fwrite(head0, sizeof(head0), 1, fp);
-    fwrite(YTable, sizeof(YTable), 1, fp);
-    putc(1, fp);
-    fwrite(UVTable, sizeof(UVTable), 1, fp);
+    jpeg_write(&writer, head0, sizeof(head0));
+    jpeg_write(&writer, YTable, sizeof(YTable));
+    jpeg_write_byte(&writer, 1);
+    jpeg_write(&writer, UVTable, sizeof(UVTable));
     const uint8_t head1[] = { 0xFF,0xC0,0,0x11,8,
         (uint8_t)(height >> 8), (uint8_t)(height & 0xFF),
         (uint8_t)(width >> 8), (uint8_t)(width & 0xFF),
         3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1, 0xFF, 0xC4, 0x01, 0xA2,0 };
-    fwrite(head1, sizeof(head1), 1, fp);
-    fwrite(std_dc_luminance_nrcodes+1, sizeof(std_dc_luminance_nrcodes)-1, 1, fp);
-    fwrite(std_dc_luminance_values, sizeof(std_dc_luminance_values), 1, fp);
-    putc(0x10, fp); // HTYACinfo
-    fwrite(std_ac_luminance_nrcodes+1, sizeof(std_ac_luminance_nrcodes)-1, 1, fp);
-    fwrite(std_ac_luminance_values, sizeof(std_ac_luminance_values), 1, fp);
-    putc(1, fp); // HTUDCinfo
-    fwrite(std_dc_chrominance_nrcodes+1, sizeof(std_dc_chrominance_nrcodes)-1, 1, fp);
-    fwrite(std_dc_chrominance_values, sizeof(std_dc_chrominance_values), 1, fp);
-    putc(0x11, fp); // HTUACinfo
-    fwrite(std_ac_chrominance_nrcodes+1, sizeof(std_ac_chrominance_nrcodes)-1, 1, fp);
-    fwrite(std_ac_chrominance_values, sizeof(std_ac_chrominance_values), 1, fp);
+    jpeg_write(&writer, head1, sizeof(head1));
+    jpeg_write(&writer, std_dc_luminance_nrcodes+1, sizeof(std_dc_luminance_nrcodes) - 1);
+    jpeg_write(&writer, std_dc_luminance_values, sizeof(std_dc_luminance_values));
+    jpeg_write_byte(&writer, 0x10); // HTYACinfo
+    jpeg_write(&writer, std_ac_luminance_nrcodes+1, sizeof(std_ac_luminance_nrcodes) - 1);
+    jpeg_write(&writer, std_ac_luminance_values, sizeof(std_ac_luminance_values));
+    jpeg_write_byte(&writer, 1); // HTUDCinfo
+    jpeg_write(&writer, std_dc_chrominance_nrcodes+1, sizeof(std_dc_chrominance_nrcodes) - 1);
+    jpeg_write(&writer, std_dc_chrominance_values, sizeof(std_dc_chrominance_values));
+    jpeg_write_byte(&writer, 0x11); // HTUACinfo
+    jpeg_write(&writer, std_ac_chrominance_nrcodes+1, sizeof(std_ac_chrominance_nrcodes) - 1);
+    jpeg_write(&writer, std_ac_chrominance_values, sizeof(std_ac_chrominance_values));
     static const uint8_t head2[] =
         { 0xFF,0xDA,0,0xC,3,1,0,2,0x11,3,0x11,0,0x3F,0 };
-    fwrite(head2, sizeof(head2), 1, fp);
+    jpeg_write(&writer, head2, sizeof(head2));
     // Encode 8x8 macroblocks
     const uint8_t* imageData = (const uint8_t*)data;
     int DCY = 0;
@@ -359,32 +404,38 @@ int jpeg_encode(const char *filename, const void *data,
                 for (int col = x; col < x + 8; col++) {
                     int p = row*width*comp + col*comp;
                     if (row >= height) {
-                        p -= width*comp*(row + 1 - height);
+                        p -= width * comp * (row + 1 - height);
                     }
                     if (col >= width) {
-                        p -= comp*(col + 1 - width);
+                        p -= comp * (col + 1 - width);
                     }
-                    float r = imageData[p+0], g = imageData[p+ofsG], b = imageData[p+ofsB];
+                    float r = imageData[p+0];
+                    float g = imageData[p+ofsG];
+                    float b = imageData[p+ofsB];
                     YDU[pos] = +0.29900f*r + 0.58700f * g + 0.11400f * b - 128;
                     UDU[pos] = -0.16874f*r - 0.33126f * g + 0.50000f * b;
                     VDU[pos] = +0.50000f*r - 0.41869f * g - 0.08131f * b;
                     pos++;
                 }
             }
-            DCY = process_DU(fp, &bitBuf, &bitCnt, YDU, fdtbl_Y, DCY, YDC_HT, YAC_HT);
-            DCU = process_DU(fp, &bitBuf, &bitCnt, UDU, fdtbl_UV, DCU, UVDC_HT, UVAC_HT);
-            DCV = process_DU(fp, &bitBuf, &bitCnt, VDU, fdtbl_UV, DCV, UVDC_HT, UVAC_HT);
+            DCY = jpeg_encode_process(&writer, &bitBuf, &bitCnt, YDU, fdtbl_Y, DCY, YDC_HT, YAC_HT);
+            DCU = jpeg_encode_process(&writer, &bitBuf, &bitCnt, UDU, fdtbl_UV, DCU, UVDC_HT, UVAC_HT);
+            DCV = jpeg_encode_process(&writer, &bitBuf, &bitCnt, VDU, fdtbl_UV, DCV, UVDC_HT, UVAC_HT);
         }
     }
     // Do the bit alignment of the EOI marker
     static const uint16_t fillBits[] = {0x7F, 7};
-    write_bits(fp, &bitBuf, &bitCnt, fillBits);
+    jpeg_encode_write_bits(&writer, &bitBuf, &bitCnt, fillBits);
     // EOI
-    putc(0xFF, fp);
-    putc(0xD9, fp);
-    fclose(fp);
+    jpeg_write_byte(&writer, 0xFF);
+    jpeg_write_byte(&writer, 0xD9);
+    jpeg_writer_flush(&writer);
     return 0;
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // jpeg_encode_implementation
 #endif // jpeg_encode_h

@@ -11,6 +11,7 @@
       <Filter>test</Filter>
     </ClInclude>
     <ClInclude Include="..\picojpeg.h" />
+    <ClInclude Include="..\jpeg_encode.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="res">
@@ -40,7 +41,6 @@
     <ClCompile Include="..\src\main.c">
       <Filter>test</Filter>
     </ClCompile>
-    <ClCompile Include="..\jo_jpeg.c" />
     <ClCompile Include="..\picojpeg.c" />
   </ItemGroup>
 </Project>
